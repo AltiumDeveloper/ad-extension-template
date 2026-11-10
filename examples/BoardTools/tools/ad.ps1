@@ -1,0 +1,15 @@
+<#
+.SYNOPSIS
+  Talks to the running Altium Designer (Debug BoardTools shim) through the hot reload pipe.
+  Thin wrapper over tools\hotreload.ps1 (from the Altium.Designer.HotReload package) with -Name BoardTools.
+
+.EXAMPLE
+  .\tools\ad.ps1 status -gc
+  .\tools\ad.ps1 run Hello
+  .\tools\ad.ps1 -Pid 12345 reload      # when several AD instances run
+
+  Verbs: ping | status [-gc] | reload | list | run <Command> [Key=Value|Key=Value]
+  Exit code: 0 ok, 1 command failed, 2 usage / ambiguous instance, 3 AD not reachable.
+#>
+& (Join-Path $PSScriptRoot 'hotreload.ps1') -Name BoardTools @args
+exit $LASTEXITCODE

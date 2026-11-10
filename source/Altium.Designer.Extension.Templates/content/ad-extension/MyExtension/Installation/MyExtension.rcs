@@ -1,0 +1,61 @@
+PL PLMyExtension:Hello
+    Command='MyExtension:Run'
+    Caption='&Hello'
+    Image=''
+    Description='Show the focused project name and its net count'
+    Params='Cmd=Hello'
+End
+
+//#if (Panel)
+PL PLMyExtension:Panel
+    Command='MyExtension:Run'
+    Caption='Show &Panel'
+    Image=''
+    Description='Show the MyExtension panel'
+    Params='Cmd=Panel.Show'
+End
+
+//#endif
+#if DEBUG
+PL PLMyExtension:Reload
+    Command='MyExtension:Reload'
+    Caption='&Reload Implementation'
+    Image=''
+    Description='Reload the MyExtension implementation module'
+    Params=''
+End
+
+PL PLMyExtension:Status
+    Command='MyExtension:Status'
+    Caption='Hot Reload &Status'
+    Image=''
+    Description='Show MyExtension hot reload status'
+    Params=''
+End
+
+#endif
+Tree MNMyExtension Caption='&MyExtension' TopLevel=True
+    Link      MNMyExtension_Hello  PLID='PLMyExtension:Hello'  End
+//#if (Panel)
+    Link      MNMyExtension_Panel  PLID='PLMyExtension:Panel'  End
+//#endif
+#if DEBUG
+    Separator MNMyExtension_Sep10                              End
+    Tree MNMyExtension_Developer Caption='&Developer'
+        Link  MNMyExtension_Reload PLID='PLMyExtension:Reload' End
+        Link  MNMyExtension_Status PLID='PLMyExtension:Status' End
+    End
+#endif
+End
+
+Insertion MNMyExtension_1 TargetID='MNNoDocument' InsertType='Before' RefID0='MNNoDocument_Window'
+    TreeCopy MNNoDocument_MyExtension OriginalID=MNMyExtension IDSuffix='_1' End
+End
+
+Insertion MNMyExtension_2 TargetID='MNSchematicMenu' InsertType='Before' RefID0='MNSchematic_Window1'
+    TreeCopy MNSchematicMenu_MyExtension OriginalID=MNMyExtension IDSuffix='_2' End
+End
+
+Insertion MNMyExtension_3 TargetID='MNPCBMenu' InsertType='Before' RefID0='MNPCBMenu_Window1'
+    TreeCopy MNPCBMenu_MyExtension OriginalID=MNMyExtension IDSuffix='_3' End
+End

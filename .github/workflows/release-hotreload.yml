@@ -1,0 +1,53 @@
+name: Release Altium.Designer.HotReload
+
+# Publishes Altium.Designer.HotReload to nuget.org when a tag like `hotreload-v1.0.0` is pushed
+# (for example by creating a GitHub release with that tag). The version comes from the tag.
+on:
+  push:
+    tags:
+      - "hotreload-v*"
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    environment: nuget
+    permissions:
+      contents: write   # attach the package to the GitHub release
+      id-token: write   # nuget.org trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Version from the tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#hotreload-v}" >> "$GITHUB_OUTPUT"
+
+      # Gate the release on the tests before packing.
+      - run: dotnet test source/Altium.Designer.HotReload/tests/Altium.Designer.HotReload.Tests -c Release
+
+      - run: dotnet pack source/Altium.Designer.HotReload -c Release -o artifacts -p:Version=${{ steps.version.outputs.version }}
+
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        shell: bash
+        run: dotnet nuget push artifacts/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+
+      - name: Attach to the GitHub release
+        shell: bash
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "Altium.Designer.HotReload ${{ steps.version.outputs.version }}"
+          gh release upload "$GITHUB_REF_NAME" artifacts/*.nupkg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

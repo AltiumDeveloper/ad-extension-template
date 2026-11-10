@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    All real functionality of DesignChecks. Add features as [HotCommand] methods (see Commands\).
+    Debug:   the shim loads this DLL from bin\Debug into a collectible AssemblyLoadContext and
+             swaps it in whenever it is rebuilt.
+    Release: the shim references this project and calls HotEntry directly.
+  -->
+  <PropertyGroup>
+    <RootNamespace>DesignChecks.Impl</RootNamespace>
+    <UseAltiumSdk>true</UseAltiumSdk>
+    <Deterministic>true</Deterministic>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DesignChecks.Tests" />
+  </ItemGroup>
+</Project>

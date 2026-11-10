@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Altium",
+  "classifications": [ "Altium", "Altium Designer", "Extension" ],
+  "identity": "Altium.Designer.Extension",
+  "name": "Altium Designer Extension (hot reload)",
+  "description": "Altium Designer extension (.NET 8 or .NET 10, as the installation hosts): a stable shim plus an implementation that hot-reloads in Debug builds.",
+  "shortName": "ad-extension",
+  "tags": { "language": "C#", "type": "solution" },
+  "sourceName": "MyExtension",
+  "preferNameDirectory": true,
+  "guids": [
+    "6e4c2737-d2d3-4433-a0c2-690fa8a49775",
+    "2D3C2FE2-04B2-4EE1-9A26-D14E98209E08",
+    "C122D673-A04E-4BE3-85B8-D51FF9CAD45B",
+    "C4D30DEB-A1A0-4820-9CA4-2648CEE1EE4B",
+    "9d3b6f1e-58c4-4a7e-b2d0-7e41c6a9f352"
+  ],
+  "symbols": {
+    "SystemDir": {
+      "type": "parameter",
+      "datatype": "string",
+      "description": "System folder of the Altium Designer installation to build against (contains Altium.SDK.dll). The target framework and the Extensions folder are derived from it.",
+      "defaultValue": "C:\\Program Files\\Altium\\AD26\\System",
+      "replaces": "C:\\Program Files\\Altium\\AD26\\System"
+    },
+    "ExtensionsDir": {
+      "type": "parameter",
+      "datatype": "string",
+      "description": "Extensions folder to deploy to. Default: the one of the installation in --altium-system-dir, found by tools\\deploy.ps1.",
+      "defaultValue": "",
+      "replaces": "ALTIUM_EXTENSIONS_DIR"
+    },
+    "Outputer": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Also add an OutJob outputer (Report category) whose content is written by a hot-reloadable command."
+    },
+    "Panel": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Also add a dockable panel whose content is built by the implementation, so it hot-reloads."
+    },
+    "Tests": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Add an xUnit test project for the implementation (runs without Altium Designer)."
+    },
+    "Today": {
+      "type": "generated",
+      "generator": "now",
+      "parameters": { "format": "MM/dd/yyyy" },
+      "replaces": "10/21/2026"
+    }
+  },
+  "SpecialCustomOperations": {
+    "**/*.ins": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": { "if": [ "//#if" ], "else": [ "//#else" ], "elseif": [ "//#elseif" ], "endif": [ "//#endif" ], "trim": true, "wholeLine": true }
+        }
+      ]
+    },
+    "**/*.rcs": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": { "if": [ "//#if" ], "else": [ "//#else" ], "elseif": [ "//#elseif" ], "endif": [ "//#endif" ], "trim": true, "wholeLine": true }
+        }
+      ]
+    },
+    "**/*.sln": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": { "if": [ "#if" ], "else": [ "#else" ], "elseif": [ "#elseif" ], "endif": [ "#endif" ], "trim": true, "wholeLine": true }
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        { "exclude": [ "**/bin/**", "**/obj/**", "**/.vs/**" ] },
+        {
+          "condition": "(!Outputer)",
+          "exclude": [ "MyExtension/ReportOutput.cs", "MyExtension/Installation/MyExtension.out", "MyExtension.Impl/Commands/ReportCommand.cs" ]
+        },
+        {
+          "condition": "(!Panel)",
+          "exclude": [ "MyExtension/Panel.cs", "MyExtension.Impl/Ui/**", "MyExtension.Impl/Commands/PanelCommands.cs" ]
+        },
+        {
+          "condition": "(!Tests)",
+          "exclude": [ "MyExtension.Tests/**" ]
+        }
+      ]
+    }
+  ],
+  "primaryOutputs": [ { "path": "MyExtension.sln" } ]
+}

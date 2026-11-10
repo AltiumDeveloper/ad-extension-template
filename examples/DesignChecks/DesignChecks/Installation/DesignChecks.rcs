@@ -1,0 +1,85 @@
+PL PLDesignChecks:Hello
+    Command='DesignChecks:Run'
+    Caption='&Hello'
+    Image=''
+    Description='Show the focused project name and its net count'
+    Params='Cmd=Hello'
+End
+
+PL PLDesignChecks:Erc
+    Command='DesignChecks:Run'
+    Caption='Run Decoupling &ERC'
+    Image=''
+    Description='Check that every IC supply node has enough decoupling capacitors (focused project)'
+    Params='Cmd=ERC'
+End
+
+PL PLDesignChecks:ErcClear
+    Command='DesignChecks:Run'
+    Caption='Clear Decoupling ERC Messages'
+    Image=''
+    Description='Remove the decoupling ERC messages from the Messages panel'
+    Params='Cmd=ERC.Clear'
+End
+
+PL PLDesignChecks:Drc
+    Command='DesignChecks:Run'
+    Caption='Run Decoupling &DRC'
+    Image=''
+    Description='Check that decoupling capacitors sit close to their IC pins (open board)'
+    Params='Cmd=DRC'
+End
+
+PL PLDesignChecks:Palette
+    Command='DesignChecks:Run'
+    Caption='&All Commands...'
+    Image=''
+    Description='List every command of the loaded implementation'
+    Params='Cmd=Palette'
+End
+
+#if DEBUG
+PL PLDesignChecks:Reload
+    Command='DesignChecks:Reload'
+    Caption='&Reload Implementation'
+    Image=''
+    Description='Reload the DesignChecks implementation module'
+    Params=''
+End
+
+PL PLDesignChecks:Status
+    Command='DesignChecks:Status'
+    Caption='Hot Reload &Status'
+    Image=''
+    Description='Show DesignChecks hot reload status'
+    Params=''
+End
+
+#endif
+Tree MNDesignChecks Caption='&DesignChecks' TopLevel=True
+    Link      MNDesignChecks_Erc      PLID='PLDesignChecks:Erc'      End
+    Link      MNDesignChecks_ErcClear PLID='PLDesignChecks:ErcClear' End
+    Link      MNDesignChecks_Drc      PLID='PLDesignChecks:Drc'      End
+    Separator MNDesignChecks_Sep5                                        End
+    Link      MNDesignChecks_Palette  PLID='PLDesignChecks:Palette'  End
+    Link      MNDesignChecks_Hello    PLID='PLDesignChecks:Hello'    End
+#if DEBUG
+    Separator MNDesignChecks_Sep10                              End
+    Tree MNDesignChecks_Developer Caption='&Developer'
+        Link  MNDesignChecks_Reload PLID='PLDesignChecks:Reload' End
+        Link  MNDesignChecks_Status PLID='PLDesignChecks:Status' End
+    End
+#endif
+End
+
+Insertion MNDesignChecks_1 TargetID='MNNoDocument' InsertType='Before' RefID0='MNNoDocument_Window'
+    TreeCopy MNNoDocument_DesignChecks OriginalID=MNDesignChecks IDSuffix='_1' End
+End
+
+Insertion MNDesignChecks_2 TargetID='MNSchematicMenu' InsertType='Before' RefID0='MNSchematic_Window1'
+    TreeCopy MNSchematicMenu_DesignChecks OriginalID=MNDesignChecks IDSuffix='_2' End
+End
+
+Insertion MNDesignChecks_3 TargetID='MNPCBMenu' InsertType='Before' RefID0='MNPCBMenu_Window1'
+    TreeCopy MNPCBMenu_DesignChecks OriginalID=MNDesignChecks IDSuffix='_3' End
+End

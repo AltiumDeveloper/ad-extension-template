@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The shim: the only assembly Altium Designer loads directly. Keep it small and stable;
+    changing it (or Installation\*) needs a redeploy and an AD restart.
+
+    Debug:   loads BoardTools.Impl from its build output through the hot-reload host
+             (file watcher + dev pipe). Edit, build, and the running AD swaps it in.
+    Release: references BoardTools.Impl and calls HotEntry directly. No hot-reload code at all.
+  -->
+  <PropertyGroup>
+    <RootNamespace>BoardTools</RootNamespace>
+    <UseAltiumSdk>true</UseAltiumSdk>
+    <!-- Folder AD loads the extension from (tools\deploy.ps1): <Extensions folder>\BoardTools. The Extensions folder is
+         AltiumExtensionsDir if set, else that of the installation AltiumSystemDir belongs to (found by deploy.ps1). -->
+    <ExtensionFolderName>BoardTools</ExtensionFolderName>
+    <!-- Identifies the extension in Extensions\ExtensionsRegistry.xml (tools\deploy.ps1). Generated once; keep it. -->
+    <ExtensionGuid>35c47950-7234-49d8-b6a4-2feccd80e8e5</ExtensionGuid>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Debug-only hot reload host, compiled into the shim as source. Release builds contain none of it. -->
+    <PackageReference Include="Altium.Designer.HotReload" Version="1.0.0" PrivateAssets="all" />
+    <!-- HotModule="true": hot-reloaded from its build output in Debug, a normal reference otherwise. -->
+    <ProjectReference Include="..\BoardTools.Impl\BoardTools.Impl.csproj" HotModule="true" />
+  </ItemGroup>
+
+  <!--
+    Copy Installation\*.ins/.rcs to the output. Lines between "#if DEBUG" and "#endif" are kept
+    in Debug and dropped otherwise (that is how the Developer menu exists only in Debug builds).
+    The marker lines themselves never reach AD.
+  -->
+  <ItemGroup>
+    <InstallationFile Include="Installation\*.ins;Installation\*.rcs;Installation\*.out" />
+    <UpToDateCheckInput Include="@(InstallationFile)" />
+  </ItemGroup>
+
+  <Target Name="CopyInstallationFiles" AfterTargets="Build"
+          Inputs="@(InstallationFile);$(MSBuildProjectFullPath)"
+          Outputs="@(InstallationFile->'$(OutDir)%(Filename)%(Extension)')">
+    <PropertyGroup>
+      <_DebugBlock Condition="'$(Configuration)' == 'Debug'">(?m)^#(if DEBUG|endif)\r?\n</_DebugBlock>
+      <_DebugBlock Condition="'$(Configuration)' != 'Debug'">(?ms)^#if DEBUG\r?\n.*?^#endif\r?\n</_DebugBlock>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(OutDir)%(InstallationFile.Filename)%(InstallationFile.Extension)"
+                      Lines="$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('%(InstallationFile.FullPath)')), '$(_DebugBlock)', ''))"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

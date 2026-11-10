@@ -1,0 +1,52 @@
+<Project>
+  <!--
+    Altium paths and build settings shared by every project in this solution.
+    Override on the command line if your install differs, e.g.
+      dotnet build -p:AltiumSystemDir="D:\Altium\AD26\System"
+  -->
+  <PropertyGroup>
+    <AltiumSystemDir Condition="'$(AltiumSystemDir)' == ''">C:\Program Files\Altium\AD26\System</AltiumSystemDir>
+    <!-- Optional. Empty: tools\deploy.ps1 finds the Extensions folder of the installation that AltiumSystemDir belongs to. -->
+    <AltiumExtensionsDir Condition="'$(AltiumExtensionsDir)' == ''"></AltiumExtensionsDir>
+
+    <!--
+      Target exactly the .NET version Altium Designer hosts (26.1: net8.0, 26.12: net10.0). The installation
+      names it in X2.runtimeconfig.json ("tfm"), next to the System folder. Override with
+      -p:AltiumTargetFramework=net8.0-windows; without the file, net8.0-windows is assumed.
+    -->
+    <_AltiumRuntimeConfig>$([System.IO.Path]::Combine($(AltiumSystemDir), '..', 'X2.runtimeconfig.json'))</_AltiumRuntimeConfig>
+    <_AltiumHostedTfm Condition="'$(AltiumTargetFramework)' == '' and Exists('$(_AltiumRuntimeConfig)')">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AltiumRuntimeConfig)')), '"tfm"\s*:\s*"(net[0-9.]+)"').Groups[1].Value)</_AltiumHostedTfm>
+    <AltiumTargetFramework Condition="'$(AltiumTargetFramework)' == '' and '$(_AltiumHostedTfm)' != ''">$(_AltiumHostedTfm)-windows</AltiumTargetFramework>
+    <AltiumTargetFramework Condition="'$(AltiumTargetFramework)' == ''">net8.0-windows</AltiumTargetFramework>
+
+    <TargetFramework>$(AltiumTargetFramework)</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Altium.SDK references WindowsBase from the WindowsDesktop framework. -->
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <!-- Windows-only by definition (runs inside AD). -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <!-- Loaded into AD as plugins (everything but test projects): copy dependencies and write a deps.json,
+       but never ship a runtimeconfig.json into AD's extension folder. -->
+  <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+
+  <!-- Altium SDK assemblies are always provided by the running AD instance: reference, never copy. -->
+  <ItemGroup Condition="'$(UseAltiumSdk)' == 'true'">
+    <Reference Include="Altium.SDK">
+      <HintPath>$(AltiumSystemDir)\Altium.SDK.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Altium.SDK.Interfaces">
+      <HintPath>$(AltiumSystemDir)\Altium.SDK.Interfaces.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

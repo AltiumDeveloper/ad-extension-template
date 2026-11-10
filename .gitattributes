@@ -1,0 +1,9 @@
+# Normalize line endings in the repository; check out with Windows line endings (Altium Designer and
+# Windows PowerShell 5.1 expect CRLF in .ins/.rcs/.out and .ps1 files).
+* text=auto eol=crlf
+
+*.png binary
+*.ico binary
+*.bmp binary
+*.dll binary
+*.nupkg binary

@@ -1,0 +1,75 @@
+name: Release Altium.Designer.Extension.Templates
+
+# Publishes Altium.Designer.Extension.Templates to nuget.org when a tag like `templates-v1.0.0` is pushed
+# (for example by creating a GitHub release with that tag). The version comes from the tag.
+on:
+  push:
+    tags:
+      - "templates-v*"
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    environment: nuget
+    permissions:
+      contents: write   # attach the package to the GitHub release
+      id-token: write   # nuget.org trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Version from the tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#templates-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Repository checks
+        shell: pwsh
+        run: ./eng/check-repo.ps1
+
+      # Generated extensions restore Altium.Designer.HotReload from nuget.org: release it first.
+      - name: The referenced Altium.Designer.HotReload is on nuget.org
+        shell: pwsh
+        run: |
+          $csproj = Get-Content source/Altium.Designer.Extension.Templates/content/ad-extension/MyExtension/MyExtension.csproj -Raw
+          $version = [regex]::Match($csproj, 'Include="Altium.Designer.HotReload" Version="([^"]+)"').Groups[1].Value
+          $published = (Invoke-RestMethod https://api.nuget.org/v3-flatcontainer/altium.designer.hotreload/index.json).versions
+          if ($published -notcontains $version.ToLowerInvariant()) { throw "Altium.Designer.HotReload $version is not on nuget.org yet: release it first (tag hotreload-v$version)." }
+          Write-Host "Altium.Designer.HotReload $version is published."
+
+      - name: Pack
+        run: |
+          dotnet pack source/Altium.Designer.HotReload -c Release -o test-feed
+          dotnet pack source/Altium.Designer.Extension.Templates -c Release -o artifacts -p:Version=${{ steps.version.outputs.version }}
+
+      # Gate the release on the template checks.
+      - name: Test the template
+        shell: pwsh
+        run: |
+          Copy-Item test-feed/*.nupkg artifacts/
+          ./eng/test-template.ps1 -Artifacts artifacts
+          Remove-Item artifacts/Altium.Designer.HotReload.*.nupkg
+
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        shell: bash
+        run: dotnet nuget push artifacts/Altium.Designer.Extension.Templates.*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+
+      - name: Attach to the GitHub release
+        shell: bash
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "Altium.Designer.Extension.Templates ${{ steps.version.outputs.version }}"
+          gh release upload "$GITHUB_REF_NAME" artifacts/Altium.Designer.Extension.Templates.*.nupkg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

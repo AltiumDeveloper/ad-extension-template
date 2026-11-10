@@ -1,0 +1,57 @@
+PL PLBoardTools:Hello
+    Command='BoardTools:Run'
+    Caption='&Hello'
+    Image=''
+    Description='Show the focused project name and its net count'
+    Params='Cmd=Hello'
+End
+
+PL PLBoardTools:BoardSummary
+    Command='BoardTools:Run'
+    Caption='&Board Summary'
+    Image=''
+    Description='Count components, nets, tracks, vias, pads and arcs on the open board'
+    Params='Cmd=BoardSummary'
+End
+
+#if DEBUG
+PL PLBoardTools:Reload
+    Command='BoardTools:Reload'
+    Caption='&Reload Implementation'
+    Image=''
+    Description='Reload the BoardTools implementation module'
+    Params=''
+End
+
+PL PLBoardTools:Status
+    Command='BoardTools:Status'
+    Caption='Hot Reload &Status'
+    Image=''
+    Description='Show BoardTools hot reload status'
+    Params=''
+End
+
+#endif
+Tree MNBoardTools Caption='&BoardTools' TopLevel=True
+    Link      MNBoardTools_Hello  PLID='PLBoardTools:Hello'  End
+    Link      MNBoardTools_BoardSummary PLID='PLBoardTools:BoardSummary' End
+#if DEBUG
+    Separator MNBoardTools_Sep10                              End
+    Tree MNBoardTools_Developer Caption='&Developer'
+        Link  MNBoardTools_Reload PLID='PLBoardTools:Reload' End
+        Link  MNBoardTools_Status PLID='PLBoardTools:Status' End
+    End
+#endif
+End
+
+Insertion MNBoardTools_1 TargetID='MNNoDocument' InsertType='Before' RefID0='MNNoDocument_Window'
+    TreeCopy MNNoDocument_BoardTools OriginalID=MNBoardTools IDSuffix='_1' End
+End
+
+Insertion MNBoardTools_2 TargetID='MNSchematicMenu' InsertType='Before' RefID0='MNSchematic_Window1'
+    TreeCopy MNSchematicMenu_BoardTools OriginalID=MNBoardTools IDSuffix='_2' End
+End
+
+Insertion MNBoardTools_3 TargetID='MNPCBMenu' InsertType='Before' RefID0='MNPCBMenu_Window1'
+    TreeCopy MNPCBMenu_BoardTools OriginalID=MNBoardTools IDSuffix='_3' End
+End

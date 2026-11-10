@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the host outside Altium Designer: an STA thread with a message loop stands in for AD's UI thread. -->
+  <PropertyGroup>
+    <!-- Both runtimes Altium Designer hosts: 26.1 = .NET 8, 26.12 = .NET 10. -->
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsPackable>false</IsPackable>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Altium.Designer.HotReload.csproj" />
+    <None Include="..\..\tools\hotreload.ps1" Link="hotreload.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

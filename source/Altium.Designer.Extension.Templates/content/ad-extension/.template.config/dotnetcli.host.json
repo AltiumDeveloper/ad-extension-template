@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json.schemastore.org/dotnetcli.host",
+  "symbolInfo": {
+    "SystemDir": { "longName": "altium-system-dir", "shortName": "" },
+    "ExtensionsDir": { "longName": "extensions-dir", "shortName": "" },
+    "Outputer": { "longName": "outputer", "shortName": "" },
+    "Panel": { "longName": "panel", "shortName": "" },
+    "Tests": { "longName": "tests", "shortName": "" }
+  }
+}

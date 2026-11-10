@@ -1,0 +1,37 @@
+ClientInsFile 1.0
+
+Server
+    EditorName        = 'MyExtension'
+    EditorExePath     = 'MyExtension.DLL'
+    EditorDescription = 'MyExtension (hot-reloadable implementation in Debug builds)'
+    Version           = 'Version 1.0.0.0'
+    Date              = '10/21/2026'
+    HelpAboutInfo     = 'This software is protected by copyright law and international treaties.'
+    Copyright         = 'Copyright Altium, Inc.'
+    // Merge this extension's menus with the schematic editor's at startup. Without it, AD merges
+    // them only when the server first starts, after the menu bar is built: no top-level menu.
+    Updates           = 'AdvSch'
+End
+
+// Generic, stable processes. New features are [HotCommand] methods reached through Run with
+// Cmd=<Name>, so this file (and the shim) do not change when the implementation grows.
+// "#if DEBUG" blocks are kept in Debug builds only (see MyExtension.csproj).
+Command Name = 'Run'    LongSummary = 'Run a command of MyExtension (Params: Cmd=<Name>|...)' End
+#if DEBUG
+Command Name = 'Reload' LongSummary = 'Reload the MyExtension implementation module'        End
+Command Name = 'Status' LongSummary = 'Show MyExtension hot reload status'                  End
+#endif
+//#if (Panel)
+
+// The MyExtension panel (Panel.cs). Its content comes from the implementation, so it hot-reloads;
+// this block and the panel's shim classes need a redeploy and an AD restart.
+PanelInfo
+    Name              = 'MyExtensionPanel'
+    Category          = 'MyExtension'
+    Bitmap            = ''
+    Hotkey            = ''
+    ButtonVisible     = True
+    CanDockVertical   = True
+    CanDockHorizontal = True
+End
+//#endif

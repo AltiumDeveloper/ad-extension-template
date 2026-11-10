@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packs content\* as a dotnet new template package:  dotnet pack templates -->
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <PackageId>Altium.Designer.Extension.Templates</PackageId>
+    <Version>1.0.0</Version>
+    <Title>Altium Designer extension templates</Title>
+    <Authors>Altium</Authors>
+    <Company>Altium Limited</Company>
+    <Copyright>Copyright (c) 2026 Altium Limited</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/AltiumDeveloper/ad-extension-template</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AltiumDeveloper/ad-extension-template</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Description>dotnet new templates for Altium Designer extensions (.NET 8 or .NET 10, as the installation hosts) with hot reload in Debug builds.</Description>
+    <PackageTags>altium;altium-designer;extension;dotnet-new;templates</PackageTags>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <NoWarn>$(NoWarn);NU5128;NU5111;NU5110</NoWarn>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**;content\**\.vs\**" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+[OutputGenerator]
+Name                    = MyExtension Report
+Module                  = MyExtension.dll
+ServerName              = MyExtension
+ClassName               = CSharpPlugin.PluginFactory
+Description             = MyExtension project report
+DocumentKinds           = Project
+DefaultFolderName       = MyExtension Report
+CanGenerateFromProject  = True
+CanGenerateFromDocument = False
+CanGenerateNetlist      = False
+CanGenerateReport       = False
+CanGenerateOutputFiles  = True
+CanGenerateMetaPages    = False
+CanPreferencesForm      = False
+CanPropertiesForm       = False
+
+[Output1]
+Name            = MyExtension Report
+Caption         = MyExtension Report
+Description     = Components and nets of the project, as text
+Category        = Report
+RequiresCompile = True

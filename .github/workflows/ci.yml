@@ -1,0 +1,48 @@
+name: CI
+
+# Builds and tests what can run without Altium Designer (GitHub's runners have none, so code that
+# references the Altium SDK is not compiled), packs both packages, and checks the template output.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # Copies that must stay identical, versions that must match, nothing machine-specific.
+      - name: Repository checks
+        shell: pwsh
+        run: ./eng/check-repo.ps1
+
+      # The hot reload host, on both runtimes Altium Designer hosts (.NET 8 and .NET 10).
+      - name: Test Altium.Designer.HotReload
+        run: dotnet test source/Altium.Designer.HotReload/tests/Altium.Designer.HotReload.Tests -c Release
+
+      - name: Pack
+        run: |
+          dotnet pack source/Altium.Designer.HotReload -c Release -o artifacts
+          dotnet pack source/Altium.Designer.Extension.Templates -c Release -o artifacts
+
+      # dotnet new ad-extension with each option; the output restores against the packed HotReload.
+      - name: Test the template
+        shell: pwsh
+        run: ./eng/test-template.ps1 -Artifacts artifacts
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: artifacts/*.nupkg

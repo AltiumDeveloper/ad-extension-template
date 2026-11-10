@@ -1,0 +1,23 @@
+ClientInsFile 1.0
+
+Server
+    EditorName        = 'DesignChecks'
+    EditorExePath     = 'DesignChecks.DLL'
+    EditorDescription = 'DesignChecks (hot-reloadable implementation in Debug builds)'
+    Version           = 'Version 1.0.0.0'
+    Date              = '10/23/2026'
+    HelpAboutInfo     = 'This software is protected by copyright law and international treaties.'
+    Copyright         = 'Copyright Altium, Inc.'
+    // Merge this extension's menus with the schematic editor's at startup. Without it, AD merges
+    // them only when the server first starts, after the menu bar is built: no top-level menu.
+    Updates           = 'AdvSch'
+End
+
+// Generic, stable processes. New features are [HotCommand] methods reached through Run with
+// Cmd=<Name>, so this file (and the shim) do not change when the implementation grows.
+// "#if DEBUG" blocks are kept in Debug builds only (see DesignChecks.csproj).
+Command Name = 'Run'    LongSummary = 'Run a command of DesignChecks (Params: Cmd=<Name>|...)' End
+#if DEBUG
+Command Name = 'Reload' LongSummary = 'Reload the DesignChecks implementation module'        End
+Command Name = 'Status' LongSummary = 'Show DesignChecks hot reload status'                  End
+#endif

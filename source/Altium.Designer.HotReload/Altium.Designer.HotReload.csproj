@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Source-only package. The DLL this project builds is used by the tests only; the .nupkg ships
+    src\*.cs plus build\Altium.Designer.HotReload.targets, which compiles them into Debug shims.
+      dotnet pack HotReload -c Release
+  -->
+  <PropertyGroup>
+    <!-- Both runtimes Altium Designer hosts: 26.1 = .NET 8, 26.12 = .NET 10. -->
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+
+    <PackageId>Altium.Designer.HotReload</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Altium</Authors>
+    <Company>Altium Limited</Company>
+    <Copyright>Copyright (c) 2026 Altium Limited</Copyright>
+    <PackageProjectUrl>https://github.com/AltiumDeveloper/ad-extension-template</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AltiumDeveloper/ad-extension-template</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Description>Hot reload for Altium Designer extensions in Debug builds: rebuild your C# and the running AD swaps it in, no restart. Source-only; Release builds contain none of it.</Description>
+    <PackageTags>altium;altium-designer;hot-reload;assemblyloadcontext</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <NoWarn>$(NoWarn);NU5111;NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\*.cs" />
+    <InternalsVisibleTo Include="Altium.Designer.HotReload.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="src\*.cs" Pack="true" PackagePath="src\" />
+    <None Include="build\Altium.Designer.HotReload.targets" Pack="true" PackagePath="build\" />
+    <None Include="tools\hotreload.ps1" Pack="true" PackagePath="tools\" />
+    <None Include="README.md;CHANGELOG.md;LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
