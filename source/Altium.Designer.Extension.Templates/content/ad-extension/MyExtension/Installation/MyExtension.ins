@@ -21,11 +21,11 @@ Command Name = 'Run'    LongSummary = 'Run a command of MyExtension (Params: Cmd
 Command Name = 'Reload' LongSummary = 'Reload the MyExtension implementation module'        End
 Command Name = 'Status' LongSummary = 'Show MyExtension hot reload status'                  End
 #endif
-//#if (Panel)
 
-// The MyExtension panel (Panel.cs). Its content comes from the implementation, so it hot-reloads;
-// this block and the panel's shim classes need a redeploy and an AD restart.
+//#if (Panel)
 PanelInfo
+    // The MyExtension panel (Panel.cs). Its content comes from the implementation, so it hot-reloads;
+    // this block and the panel's shim classes need a redeploy and an AD restart.
     Name              = 'MyExtensionPanel'
     Category          = 'MyExtension'
     Bitmap            = ''

@@ -27,6 +27,12 @@ foreach ($example in $examples) {
     Check ((Read-Text $copy) -eq ($client -replace 'MyExtension', $example.Name)) "examples/$($example.Name)/tools/hotreload.ps1 = the package's (name substituted)"
 }
 
+Write-Host '== Line endings of templated files'
+# The template engine misreads //#if and #if lines in CRLF files (see .gitattributes): these must be LF.
+foreach ($file in Get-ChildItem $template -Recurse -File -Include *.ins, *.rcs, *.out, *.sln) {
+    Check (-not ([IO.File]::ReadAllText($file.FullName)).Contains("`r")) "$($file.FullName.Substring($root.Length + 1)) has LF line endings"
+}
+
 Write-Host '== Template files in the examples'
 # Files the examples take unchanged from the template (with the extension name substituted).
 $shared = 'Directory.Build.props', 'tools\ad.ps1', 'tools\deploy.ps1', 'tools\dev.ps1',

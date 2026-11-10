@@ -27,7 +27,8 @@
   <!--
     Copy Installation\*.ins/.rcs to the output. Lines between "#if DEBUG" and "#endif" are kept
     in Debug and dropped otherwise (that is how the Developer menu exists only in Debug builds).
-    The marker lines themselves never reach AD.
+    The marker lines themselves never reach AD, and AD always gets Windows (CRLF) line endings,
+    whatever the line endings of the source files.
   -->
   <ItemGroup>
     <InstallationFile Include="Installation\*.ins;Installation\*.rcs;Installation\*.out" />
@@ -41,8 +42,9 @@
       <_DebugBlock Condition="'$(Configuration)' == 'Debug'">(?m)^#(if DEBUG|endif)\r?\n</_DebugBlock>
       <_DebugBlock Condition="'$(Configuration)' != 'Debug'">(?ms)^#if DEBUG\r?\n.*?^#endif\r?\n</_DebugBlock>
     </PropertyGroup>
+    <!-- Per file (batched on the item): drop or keep the Debug blocks, then make every line end CRLF. -->
     <WriteLinesToFile File="$(OutDir)%(InstallationFile.Filename)%(InstallationFile.Extension)"
-                      Lines="$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('%(InstallationFile.FullPath)')), '$(_DebugBlock)', ''))"
+                      Lines="$([System.Text.RegularExpressions.Regex]::Replace($([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('%(InstallationFile.FullPath)')), '$(_DebugBlock)', '')), '\r?\n', '&#13;&#10;'))"
                       Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 </Project>

@@ -93,9 +93,19 @@ foreach ($case in $cases) {
 
     $ins = [IO.File]::ReadAllText((Join-Path $dir "$name\Installation\$name.ins"))
     $rcs = [IO.File]::ReadAllText((Join-Path $dir "$name\Installation\$name.rcs"))
-    Check (($ins -match 'PanelInfo') -eq $case.Panel) "$($case.Name): PanelInfo in .ins = $($case.Panel)"
-    Check (($rcs -match 'Cmd=Panel\.Show') -eq $case.Panel) "$($case.Name): Show Panel menu item = $($case.Panel)"
+    # Whole blocks, not just a keyword: a misparsed conditional can eat a keyword and leave the rest.
+    $panelInfo = "(?ms)^PanelInfo\r?\n.*?^\s*Name\s*=\s*'$($name)Panel'.*?^End\r?$"
+    Check (($ins -match $panelInfo) -eq $case.Panel) "$($case.Name): PanelInfo block in .ins = $($case.Panel)"
+    if (-not $case.Panel) {
+        Check ($ins -notmatch 'Panel') "$($case.Name): nothing about the panel left in .ins"
+        Check ($rcs -notmatch 'Panel') "$($case.Name): nothing about the panel left in .rcs"
+    }
+    Check (($rcs -match "(?ms)^PL PL$($name):Panel\r?\n.*?Params='Cmd=Panel\.Show'\r?\nEnd") -eq $case.Panel) "$($case.Name): Show Panel menu item = $($case.Panel)"
     Check ($ins -notmatch '(?m)^[^/\r\n]*"') "$($case.Name): .ins has no stray text"
+    Check ($ins -notmatch '(?m)^\s*//#') "$($case.Name): no //# markers left in .ins"
+    Check ($rcs -notmatch '(?m)^\s*//#') "$($case.Name): no //# markers left in .rcs"
+    $insBlocks = [regex]::Matches($ins, '(?m)^(Server|PanelInfo)\r?$').Count
+    Check ($insBlocks -eq ([regex]::Matches($ins, '(?m)^End\r?$').Count)) "$($case.Name): .ins blocks closed"
     $balanced = { param($s) ([regex]::Matches($s, '(?m)^#if DEBUG\r?$').Count) -eq ([regex]::Matches($s, '(?m)^#endif\r?$').Count) }
     Check ((& $balanced $ins) -and (& $balanced $rcs)) "$($case.Name): #if DEBUG blocks balanced in .ins/.rcs"
     Check (([regex]::Matches($rcs, '(?m)^(PL|Tree|Insertion)\b').Count) -eq ([regex]::Matches($rcs, '(?m)^End\r?$').Count)) "$($case.Name): .rcs blocks closed"
