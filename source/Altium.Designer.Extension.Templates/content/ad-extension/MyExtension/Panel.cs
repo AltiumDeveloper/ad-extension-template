@@ -32,6 +32,13 @@ internal sealed class MyExtensionPanelForm : ServerPanelForm
     /// <summary>AppDomain data key under which the host control is published (= HostKey in the implementation).</summary>
     public const string HostKey = "MyExtension.PanelHost";
 
+    /// <summary>
+    /// AppDomain data key of the command invoker (= InvokeKey in the implementation): Func&lt;command, parameters, result&gt;.
+    /// The panel runs commands through it, so they take the same route as menu commands: in Debug through the
+    /// hot-reload host, which never swaps the implementation while one of its commands runs.
+    /// </summary>
+    public const string InvokeKey = "MyExtension.Invoke";
+
     private const string LoadErrorName = "MyExtensionPanelLoadError";
 
     public MyExtensionPanelForm()
@@ -41,6 +48,7 @@ internal sealed class MyExtensionPanelForm : ServerPanelForm
         Host = new Panel { Dock = DockStyle.Fill, Name = "MyExtensionPanelHost", BackColor = DxpThemeManager.ColorPanelBody };
         Controls.Add(Host);
         AppDomain.CurrentDomain.SetData(HostKey, Host);
+        AppDomain.CurrentDomain.SetData(InvokeKey, (Func<string, string, string>)((command, parameters) => Commands.Invoke(command, parameters, null)));
 
         // The panel may be shown before any command ran: fill it the first time it becomes visible.
         VisibleChanged += (_, _) => AttachContent();

@@ -17,7 +17,7 @@ dotnet pack source/Altium.Designer.HotReload -c Release -o artifacts
 dotnet pack source/Altium.Designer.Extension.Templates -c Release -o artifacts
 
 # Try the template (with every option on), building against a local feed with the new HotReload package
-dotnet new install artifacts/Altium.Designer.Extension.Templates.1.0.0.nupkg --force
+dotnet new install artifacts/Altium.Designer.Extension.Templates.1.0.1.nupkg --force
 dotnet new ad-extension -n TryIt --panel --outputer -o ../TryIt
 dotnet nuget add source "$PWD/artifacts" --name local --configfile ../TryIt/nuget.config
 dotnet build ../TryIt -p:AltiumSystemDir="C:\Program Files\Altium\AD26\System"

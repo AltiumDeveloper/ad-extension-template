@@ -8,9 +8,10 @@
 *.dll binary
 *.nupkg binary
 
-# The template's own .ins/.rcs/.out/.sln stay LF: the template engine's conditionals (//#if, #if) misread
+# The template's own .ins/.rcs/.out/.sln/.md stay LF: the template engine's conditionals (//#if, #if) misread
 # CRLF files. The generated shim's build writes the installation files for AD with CRLF.
 source/Altium.Designer.Extension.Templates/content/**/*.ins text eol=lf
 source/Altium.Designer.Extension.Templates/content/**/*.rcs text eol=lf
 source/Altium.Designer.Extension.Templates/content/**/*.out text eol=lf
 source/Altium.Designer.Extension.Templates/content/**/*.sln text eol=lf
+source/Altium.Designer.Extension.Templates/content/**/*.md text eol=lf

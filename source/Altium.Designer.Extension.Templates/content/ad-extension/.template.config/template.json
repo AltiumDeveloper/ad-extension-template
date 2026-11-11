@@ -80,6 +80,14 @@
           "configuration": { "if": [ "#if" ], "else": [ "#else" ], "elseif": [ "#elseif" ], "endif": [ "#endif" ], "trim": true, "wholeLine": true }
         }
       ]
+    },
+    "**/*.md": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": { "style": "block", "startToken": "<!--", "endToken": "-->", "pseudoEndToken": "-- >" }
+        }
+      ]
     }
   },
   "sources": [

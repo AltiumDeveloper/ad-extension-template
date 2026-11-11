@@ -16,8 +16,9 @@ namespace MyExtension.Impl
             CommandRegistry.All.Select(c => c.Name + "\t" + c.Description).ToArray();
 
         /// <summary>
-        /// After this generation loads: on every hot reload in Debug, once at startup in Release (env "Origin" = "Host").
-        /// Rebuild state that lives in the implementation, such as UI the shim hosts.
+        /// After this generation loads (env "Origin" = "Host"): in Debug on its first command and on every hot reload,
+        /// in Release once, when the extension starts. Rebuild state that lives in the implementation, such as UI the
+        /// shim hosts. The shim's panels may not exist yet at that point: attach to them when they are shown, too.
         /// </summary>
         public static void OnLoad(IDictionary<string, object> env)
         {

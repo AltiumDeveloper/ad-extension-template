@@ -29,7 +29,7 @@ foreach ($example in $examples) {
 
 Write-Host '== Line endings of templated files'
 # The template engine misreads //#if and #if lines in CRLF files (see .gitattributes): these must be LF.
-foreach ($file in Get-ChildItem $template -Recurse -File -Include *.ins, *.rcs, *.out, *.sln) {
+foreach ($file in Get-ChildItem $template -Recurse -File -Include *.ins, *.rcs, *.out, *.sln, *.md) {
     Check (-not ([IO.File]::ReadAllText($file.FullName)).Contains("`r")) "$($file.FullName.Substring($root.Length + 1)) has LF line endings"
 }
 

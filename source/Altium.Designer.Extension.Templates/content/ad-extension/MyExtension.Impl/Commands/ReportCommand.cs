@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -40,6 +41,17 @@ namespace MyExtension.Impl.Commands
             lines.Add($"Nets: {design.DM_NetCount()}");
             lines.Add(string.Empty);
             lines.AddRange(components.Select(c => $"{c.Designator}\t{c.Comment}"));
+
+            var nets = Enumerable.Range(0, design.DM_NetCount()).Select(design.DM_Nets)
+                .Select(n => (Name: string.IsNullOrEmpty(n.DM_FullNetName()) ? n.DM_CalculatedNetName() : n.DM_FullNetName(),
+                              Pins: Enumerable.Range(0, n.DM_PinCount()).Select(n.DM_Pins)
+                                  .Select(p => p.DM_PhysicalPartDesignator() + "-" + p.DM_PinNumber())
+                                  .OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList()))
+                .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            lines.Add(string.Empty);
+            lines.Add("Net\tPins\tConnections");
+            lines.AddRange(nets.Select(n => $"{n.Name}\t{n.Pins.Count}\t{string.Join(" ", n.Pins)}"));
             return lines;
         }
     }

@@ -24,7 +24,7 @@ namespace BoardTools.Impl
         public string RawParameters { get; }
         public IReadOnlyDictionary<string, string> Parameters { get; }
 
-        /// <summary>"UI" (AD menu / process) or "Pipe" (tools\ad.ps1).</summary>
+        /// <summary>"UI" (AD menu or process, panel, outputer) or "Pipe" (tools\ad.ps1); OnLoad gets "Host".</summary>
         public string Origin { get; }
 
         /// <summary>True when a user clicked something in AD - it is OK to show dialogs.</summary>

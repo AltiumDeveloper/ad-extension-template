@@ -12,11 +12,12 @@
     <!--
       Target exactly the .NET version Altium Designer hosts (26.1: net8.0, 26.12: net10.0). The installation
       names it in X2.runtimeconfig.json ("tfm"), next to the System folder. Override with
-      -p:AltiumTargetFramework=net8.0-windows; without the file, net8.0-windows is assumed.
+      -p:AltiumTargetFramework=net8.0-windows; without the file, net8.0-windows is assumed (with a build warning).
     -->
     <_AltiumRuntimeConfig>$([System.IO.Path]::Combine($(AltiumSystemDir), '..', 'X2.runtimeconfig.json'))</_AltiumRuntimeConfig>
-    <_AltiumHostedTfm Condition="'$(AltiumTargetFramework)' == '' and Exists('$(_AltiumRuntimeConfig)')">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AltiumRuntimeConfig)')), '"tfm"\s*:\s*"(net[0-9.]+)"').Groups[1].Value)</_AltiumHostedTfm>
+    <_AltiumHostedTfm Condition="'$(AltiumTargetFramework)' == '' and Exists('$(_AltiumRuntimeConfig)')">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AltiumRuntimeConfig)')), '"tfm"\s*:\s*"(net[0-9.]+)(-[A-Za-z]+)?"').Groups[1].Value)</_AltiumHostedTfm>
     <AltiumTargetFramework Condition="'$(AltiumTargetFramework)' == '' and '$(_AltiumHostedTfm)' != ''">$(_AltiumHostedTfm)-windows</AltiumTargetFramework>
+    <_AltiumTfmFallback Condition="'$(AltiumTargetFramework)' == ''">true</_AltiumTfmFallback>
     <AltiumTargetFramework Condition="'$(AltiumTargetFramework)' == ''">net8.0-windows</AltiumTargetFramework>
 
     <TargetFramework>$(AltiumTargetFramework)</TargetFramework>
@@ -30,6 +31,10 @@
     <!-- Windows-only by definition (runs inside AD). -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
+
+  <Target Name="AltiumTargetFrameworkWarning" BeforeTargets="CoreCompile" Condition="'$(_AltiumTfmFallback)' == 'true'">
+    <Warning Text="Could not read the .NET version Altium Designer hosts from $(_AltiumRuntimeConfig): building for $(AltiumTargetFramework). Set AltiumSystemDir to the System folder of the installation (or AltiumTargetFramework)." />
+  </Target>
 
   <!-- Loaded into AD as plugins (everything but test projects): copy dependencies and write a deps.json,
        but never ship a runtimeconfig.json into AD's extension folder. -->

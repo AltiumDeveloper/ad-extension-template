@@ -106,6 +106,14 @@ foreach ($case in $cases) {
     Check ($rcs -notmatch '(?m)^\s*//#') "$($case.Name): no //# markers left in .rcs"
     $insBlocks = [regex]::Matches($ins, '(?m)^(Server|PanelInfo)\r?$').Count
     Check ($insBlocks -eq ([regex]::Matches($ins, '(?m)^End\r?$').Count)) "$($case.Name): .ins blocks closed"
+
+    # The generated README describes only what the extension has.
+    $readme = [IO.File]::ReadAllText((Join-Path $dir 'README.md'))
+    Check ($readme -notmatch '<!--\s*#') "$($case.Name): no README conditionals left"
+    Check (($readme -match '(?m)^## Panel') -eq $case.Panel) "$($case.Name): README Panel section = $($case.Panel)"
+    Check (($readme -match '(?m)^## OutJob outputer') -eq $case.Outputer) "$($case.Name): README outputer section = $($case.Outputer)"
+    Check (($readme -match '(?m)^## Tests') -eq $case.Tests) "$($case.Name): README Tests section = $($case.Tests)"
+    Check (($readme -match '\.Tests\\') -eq $case.Tests) "$($case.Name): README layout lists the test project = $($case.Tests)"
     $balanced = { param($s) ([regex]::Matches($s, '(?m)^#if DEBUG\r?$').Count) -eq ([regex]::Matches($s, '(?m)^#endif\r?$').Count) }
     Check ((& $balanced $ins) -and (& $balanced $rcs)) "$($case.Name): #if DEBUG blocks balanced in .ins/.rcs"
     Check (([regex]::Matches($rcs, '(?m)^(PL|Tree|Insertion)\b').Count) -eq ([regex]::Matches($rcs, '(?m)^End\r?$').Count)) "$($case.Name): .rcs blocks closed"

@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <!-- Debug-only hot reload host, compiled into the shim as source. Release builds contain none of it. -->
-    <PackageReference Include="Altium.Designer.HotReload" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="Altium.Designer.HotReload" Version="1.0.1" PrivateAssets="all" />
     <!-- HotModule="true": hot-reloaded from its build output in Debug, a normal reference otherwise. -->
     <ProjectReference Include="..\MyExtension.Impl\MyExtension.Impl.csproj" HotModule="true" />
   </ItemGroup>
@@ -39,12 +39,17 @@
           Inputs="@(InstallationFile);$(MSBuildProjectFullPath)"
           Outputs="@(InstallationFile->'$(OutDir)%(Filename)%(Extension)')">
     <PropertyGroup>
-      <_DebugBlock Condition="'$(Configuration)' == 'Debug'">(?m)^#(if DEBUG|endif)\r?\n</_DebugBlock>
-      <_DebugBlock Condition="'$(Configuration)' != 'Debug'">(?ms)^#if DEBUG\r?\n.*?^#endif\r?\n</_DebugBlock>
+      <!-- Marker lines may be indented and the last line of a file (no line break after it). -->
+      <_DebugBlock Condition="'$(Configuration)' == 'Debug'">(?m)^[ \t]*#(if DEBUG|endif)[ \t]*(\r?\n|\z)</_DebugBlock>
+      <_DebugBlock Condition="'$(Configuration)' != 'Debug'">(?ms)^[ \t]*#if DEBUG[ \t]*\r?\n.*?^[ \t]*#endif[ \t]*(\r?\n|\z)</_DebugBlock>
     </PropertyGroup>
     <!-- Per file (batched on the item): drop or keep the Debug blocks, then make every line end CRLF. -->
     <WriteLinesToFile File="$(OutDir)%(InstallationFile.Filename)%(InstallationFile.Extension)"
                       Lines="$([System.Text.RegularExpressions.Regex]::Replace($([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('%(InstallationFile.FullPath)')), '$(_DebugBlock)', '')), '\r?\n', '&#13;&#10;'))"
                       Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <!-- An unmatched "#if DEBUG" or "#endif" would reach AD (and, in Release, the Debug-only lines with it). -->
+    <Error Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(OutDir)%(InstallationFile.Filename)%(InstallationFile.Extension)')), '(?m)^[ \t]*#(if|else|endif)\b'))"
+           File="%(InstallationFile.FullPath)"
+           Text="Unmatched #if DEBUG / #endif in %(InstallationFile.Filename)%(InstallationFile.Extension): every '#if DEBUG' line needs an '#endif' line." />
   </Target>
 </Project>

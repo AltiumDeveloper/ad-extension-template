@@ -11,5 +11,13 @@
   Verbs: ping | status [-gc] | reload | list | run <Command> [Key=Value|Key=Value]
   Exit code: 0 ok, 1 command failed, 2 usage / ambiguous instance, 3 AD not reachable.
 #>
-& (Join-Path $PSScriptRoot 'hotreload.ps1') -Name MyExtension @args
-exit $LASTEXITCODE
+try {
+    $global:LASTEXITCODE = 0
+    & (Join-Path $PSScriptRoot 'hotreload.ps1') -Name MyExtension @args
+    exit $LASTEXITCODE
+}
+catch {
+    # Parameter errors (e.g. -Pid abc) end up here rather than in an exit code.
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 2
+}

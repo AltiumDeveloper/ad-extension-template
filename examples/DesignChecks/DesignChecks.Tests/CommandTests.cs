@@ -29,7 +29,8 @@ namespace DesignChecks.Tests
         [Fact]
         public void Hot_commands_are_discovered()
         {
-            Assert.Contains("Hello", CommandRegistry.All.Select(c => c.Name));
+            var names = CommandRegistry.All.Select(c => c.Name).ToList();
+            Assert.Contains("Hello", names);
             Assert.Equal(CommandRegistry.All.Count, CommandRegistry.All.Select(c => c.Name.ToUpperInvariant()).Distinct().Count());
         }
 

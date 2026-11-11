@@ -46,17 +46,35 @@ function Find-ExtensionsDir([string] $systemDir) {
 }
 
 $extensionsDir = if ($props.AltiumExtensionsDir) { $props.AltiumExtensionsDir } else { Find-ExtensionsDir $props.AltiumSystemDir }
-$installDir = Join-Path $extensionsDir $props.ExtensionFolderName
+$extensionsDir = [IO.Path]::GetFullPath($extensionsDir).TrimEnd('\')
+# The folder is mirrored (files it doesn't ship are removed): it must be a plain child of the Extensions folder,
+# never the Extensions folder itself, which holds ExtensionsRegistry.xml.
+$name = $props.ExtensionFolderName
+if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*$') { throw "ExtensionFolderName '$name' in MyExtension.csproj is not a plain folder name." }
+$installDir = Join-Path $extensionsDir $name
+$registry = Join-Path $extensionsDir 'ExtensionsRegistry.xml'
+if (-not (Test-Path $registry)) { throw "$registry not found: start Altium Designer once, or check AltiumExtensionsDir." }
 $extensionGuid = $props.ExtensionGuid
 Write-Host "Target: $installDir ($($props.TargetFramework))"
 
-Write-Host "Building ($Configuration)..."
-foreach ($project in $shimProject, $implProject) {
-    & dotnet build $project -c $Configuration -nologo -v q -clp:NoSummary
-    if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
+# Builds quietly: prints only the errors and warnings (each once), everything when a build fails without them.
+function Invoke-Build([string] $project, [string] $configuration) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'   # Windows PowerShell turns native stderr into errors
+    try { $output = @(& dotnet build $project -c $configuration -nologo -v m 2>&1 | ForEach-Object { "$_" }) }
+    finally { $ErrorActionPreference = $previous }
+    $failed = $LASTEXITCODE -ne 0
+    $issues = $output | Where-Object { $_ -match ':\s+(error|warning)\s+[A-Z]+\d+' } |
+        ForEach-Object { ($_ -replace '\s+\[[^\]]+\]\s*$', '').Trim() } | Select-Object -Unique
+    foreach ($line in $issues) { Write-Host $line -ForegroundColor $(if ($line -match ':\s+error\s') { 'Red' } else { 'Yellow' }) }
+    if ($failed -and -not $issues) { $output | ForEach-Object { Write-Host $_ } }
+    if ($failed) { throw "Build failed: $project" }
 }
 
-$shimOut = Join-Path (Split-Path -Parent $shimProject) $props.OutDir
+Write-Host "Building ($Configuration)..."
+foreach ($project in $shimProject, $implProject) { Invoke-Build $project $Configuration }
+
+$shimOut = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $shimProject) $props.OutDir)).TrimEnd('\')
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
 # Replace (or remove) a file AD may have loaded: Windows allows renaming a mapped image, not overwriting it.
@@ -65,20 +83,27 @@ function Move-Aside($path) {
     try { Remove-Item $path -Force }
     catch { Rename-Item $path ((Split-Path -Leaf $path) + ".old-$stamp") }
 }
+function Get-RelativeFiles([string] $dir) {
+    Get-ChildItem $dir -File -Recurse | ForEach-Object { $_.FullName.Substring($dir.Length + 1) }
+}
 
 # Clean up files renamed aside by previous deployments (succeeds once AD released them).
-Get-ChildItem $installDir -Filter '*.old-*' | ForEach-Object { try { Remove-Item $_.FullName -Force } catch { } }
+Get-ChildItem $installDir -Filter '*.old-*' -File -Recurse | ForEach-Object { try { Remove-Item $_.FullName -Force } catch { } }
 
-# The install folder mirrors the shim output: drop what this configuration does not ship.
-$shipped = Get-ChildItem $shimOut -File | ForEach-Object Name
-Get-ChildItem $installDir -File | Where-Object { $_.Name -notlike '*.old-*' -and $shipped -notcontains $_.Name } |
-    ForEach-Object { Move-Aside $_.FullName; Write-Host "  removed $($_.Name)" }
+# The install folder mirrors the shim output, subfolders included (runtimes\, satellite assemblies):
+# drop what this configuration does not ship.
+$shipped = @(Get-RelativeFiles $shimOut)
+Get-RelativeFiles $installDir | Where-Object { $_ -notlike '*.old-*' -and $shipped -notcontains $_ } |
+    ForEach-Object { Move-Aside (Join-Path $installDir $_); Write-Host "  removed $_" }
+Get-ChildItem $installDir -Directory -Recurse | Sort-Object { $_.FullName.Length } -Descending |
+    Where-Object { -not (Get-ChildItem $_.FullName -Force) } | ForEach-Object { Remove-Item $_.FullName -Force }
 
-foreach ($file in Get-ChildItem $shimOut -File) {
-    $target = Join-Path $installDir $file.Name
+foreach ($relative in $shipped) {
+    $target = Join-Path $installDir $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
     if (Test-Path $target) { Move-Aside $target }
-    Copy-Item $file.FullName $target
-    Write-Host "  installed $($file.Name)"
+    Copy-Item (Join-Path $shimOut $relative) $target
+    Write-Host "  installed $relative"
 }
 
 # AD loads only the extensions listed in Extensions\ExtensionsRegistry.xml; a folder alone is ignored.
@@ -86,13 +111,23 @@ foreach ($file in Get-ChildItem $shimOut -File) {
 # and a backup is kept next to it. The Guid is the project's ExtensionGuid, so reinstalling on any
 # machine gives the same entry. PlatformVersions are the wizard's: the lowest platform versions an
 # extension needs (Max* 0.0.0.0 = no upper limit); AD's own extensions list higher ones.
-$registry = Join-Path (Split-Path -Parent $installDir) 'ExtensionsRegistry.xml'
-$name = Split-Path -Leaf $installDir
-if (-not (Test-Path $registry)) { throw "$registry not found: start Altium Designer once, or check AltiumExtensionsDir." }
 $text = [IO.File]::ReadAllText($registry)
-if (-not ([xml]$text).SelectSingleNode("/Extensions/Item[@HRID='$name']")) {
+$items = @(([xml]$text).SelectNodes('/Extensions/Item'))
+$existing = $items | Where-Object { $_.GetAttribute('HRID') -ieq $name } | Select-Object -First 1
+$sameGuid = $items | Where-Object { $_.GetAttribute('Guid') -ieq $extensionGuid -and $_.GetAttribute('HRID') -ine $name }
+foreach ($other in $sameGuid) {
+    Write-Host "  warning: '$($other.GetAttribute('HRID'))' in $registry has the same Guid ($extensionGuid); remove that entry if it is an old name of this extension." -ForegroundColor Yellow
+}
+if ($existing) {
+    $path = $existing.SelectSingleNode('Path')
+    if ($path -and $path.InnerText.TrimEnd('\') -ine $installDir) {
+        Write-Host "  warning: $registry lists $name at $($path.InnerText), not $installDir; AD loads it from there." -ForegroundColor Yellow
+    }
+}
+else {
+    $escapedName = [Security.SecurityElement]::Escape($name)
     $entry = @"
-  <Item HRID="$name" Guid="$extensionGuid">
+  <Item HRID="$escapedName" Guid="$extensionGuid">
     <Path>$([Security.SecurityElement]::Escape($installDir))</Path>
     <Status>0</Status>
     <VaultGuid></VaultGuid>
@@ -102,7 +137,7 @@ if (-not ([xml]$text).SelectSingleNode("/Extensions/Item[@HRID='$name']")) {
     <ReadMe></ReadMe>
     <Help></Help>
     <Requirements></Requirements>
-    <Title>$name</Title>
+    <Title>$escapedName</Title>
     <ShortDescription></ShortDescription>
     <LongDescription></LongDescription>
     <SmallImage></SmallImage>
@@ -121,7 +156,11 @@ if (-not ([xml]$text).SelectSingleNode("/Extensions/Item[@HRID='$name']")) {
   </Item>
 
 "@ -replace "`r?`n", "`r`n"
-    $text = $text.Insert($text.LastIndexOf('</Extensions>'), $entry)
+    # An empty registry may be written as <Extensions/>: open it up first.
+    $text = [regex]::Replace($text, '<Extensions\s*/>', "<Extensions>`r`n</Extensions>")
+    $end = $text.LastIndexOf('</Extensions>')
+    if ($end -lt 0) { throw "$registry has no </Extensions> element: not changed." }
+    $text = $text.Insert($end, $entry)
     [xml]$text | Out-Null  # never write a file AD cannot parse
     Copy-Item $registry "$registry.bak-$stamp"
     [IO.File]::WriteAllText($registry, $text, (New-Object Text.UTF8Encoding $false))

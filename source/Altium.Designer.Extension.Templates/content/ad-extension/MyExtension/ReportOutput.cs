@@ -61,12 +61,13 @@ namespace CSharpPlugin
             }
             catch (Exception ex)
             {
+                // AD shows the error (a dialog, unless a release is running) and adds it to the Messages panel.
                 HandleOutputerError($"{OutputName} failed: {ex.Message}");
                 return false;
             }
             finally
             {
-                Notify_FinishGeneratingOutputFile(file);
+                Notify_FinishGeneratingOutputFile(file); // pairs with Begin, whatever the outcome
             }
         }
 

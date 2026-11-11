@@ -5,7 +5,7 @@
 [![Altium.Designer.HotReload](https://img.shields.io/nuget/v/Altium.Designer.HotReload?label=Altium.Designer.HotReload)](https://www.nuget.org/packages/Altium.Designer.HotReload)
 
 Create Altium Designer extensions in C# with one command, and change their code while AD keeps
-running. Edit, build, and the new code answers in about 5 seconds, with no reinstall, no restart and
+running. Edit, build, and the new code answers within a few seconds, with no reinstall, no restart and
 no reopening of your project.
 
 | Package | What it is |
@@ -28,7 +28,7 @@ run your commands inside AD.
 
 ## Prerequisites
 
-* Altium Designer 24 or later. Verified on 26.1 (hosts .NET 8) and 26.12 (hosts .NET 10).
+* Altium Designer 24 or later.
 * .NET SDK 8 or later; **.NET SDK 10** for Altium Designer 26.12 and later (`dotnet --list-sdks`).
 * PowerShell (built into Windows), and any editor. You don't need Visual Studio or the Altium Developer wizard.
 * A PCB project to try it on.
@@ -70,6 +70,7 @@ process and menu IDs.
 | `--panel` | off | a dockable panel whose content is built by the implementation, so it hot-reloads too |
 | `--outputer` | off | an OutJob output (Report category) whose content is written by a hot-reloadable command |
 | `--tests` | on | an xUnit project for the implementation that runs without AD (`--tests false` to leave it out) |
+| `--extensions-dir` | empty | deploy to this Extensions folder instead of the installation's own (sets `AltiumExtensionsDir`) |
 
 ## 3. Install once, restart AD once
 
@@ -127,24 +128,49 @@ reachable. A build that fails to compile, or that AD rejects, never replaces the
 
 ## 5. Add your own command
 
-Add a static method anywhere in `MyTools.Impl`:
+Add a file, say `MyTools.Impl\Commands\BoardSummaryCommand.cs` (any static method of the implementation works):
 
 ```csharp
-[HotCommand("BoardSummary", "Count components and nets on the open board")]
-public static string BoardSummary(CommandContext ctx)
+using PCB; // GetCurrentPCBBoard and the other PCB object methods are extension methods in this namespace
+
+namespace MyTools.Impl.Commands
 {
-    var board = PCB.GlobalVars.PCBServer?.GetCurrentPCBBoard()
-                ?? throw new UserException("Open a .PcbDoc first.");
-    // iterate with board.BoardIterator_Create() ... BoardIterator_Destroy(ref it)
-    return $"{board.GetState_FileName()}: ...";
+    internal static class BoardSummaryCommand
+    {
+        [HotCommand("BoardSummary", "Count components and nets on the open board")]
+        public static string BoardSummary(CommandContext ctx)
+        {
+            var board = PCB.GlobalVars.PCBServer?.GetCurrentPCBBoard()
+                        ?? throw new UserException("Open a .PcbDoc first.");
+            // iterate with board.BoardIterator_Create() ... board.BoardIterator_Destroy(ref iterator)
+            return $"{board.GetState_FileName()}: ...";
+        }
+    }
 }
 ```
 
 Run `tools/dev.ps1 BoardSummary` and it runs right away, with no menu change. `tools/ad.ps1 list` shows it.
-To put it on the menu, add a `PL` with `Command='MyTools:Run' Params='Cmd=BoardSummary'` and a `Link` to
-`MyTools\Installation\MyTools.rcs`, then redeploy and restart AD. Menus are the one thing that needs a
-restart. The complete command is in [`examples/BoardTools`](examples/BoardTools). For schematic checks,
-cross-probing from the Messages panel and offline tests, see [`examples/DesignChecks`](examples/DesignChecks).
+The complete command is in [`examples/BoardTools`](examples/BoardTools). For schematic checks, cross-probing from
+the Messages panel and offline tests, see [`examples/DesignChecks`](examples/DesignChecks).
+
+To put it on the menu, add a `PL` to `MyTools\Installation\MyTools.rcs`, outside the `#if DEBUG` blocks (Release
+drops those), and a `Link` to it inside `Tree MNMyTools`, above that tree's `#if DEBUG` line:
+
+```
+PL PLMyTools:BoardSummary
+    Command='MyTools:Run'
+    Caption='&Board Summary'
+    Image=''
+    Description='Count components and nets on the open board'
+    Params='Cmd=BoardSummary'
+End
+
+    Link      MNMyTools_BoardSummary  PLID='PLMyTools:BoardSummary'  End
+```
+
+IDs must be unique. To add the item to one of AD's own menus instead, use an `Insertion` like the template's three
+(AD's own `.rcs` files in its `System` folder list the menu IDs). Then redeploy and restart AD: menus are the one
+thing that needs a restart.
 
 Rules for hot code: don't cache Altium objects across commands (query the workspace each time). Undo
 static event subscriptions, timers, threads and open forms in `HotEntry.OnUnload`.
@@ -152,12 +178,13 @@ static event subscriptions, timers, threads and open forms in `HotEntry.OnUnload
 ## Optional: a panel
 
 With `--panel`, the extension gets a dockable **MyTools** panel (**MyTools › Show Panel**, or AD's Panels
-button). The shim only hosts an empty control (`MyTools\Panel.cs` and the `PanelInfo` in `MyTools.ins`); the
-content is `MyTools.Impl\Ui\PanelContent.cs`, which lists the extension's commands and runs them on a
-double-click. Replace it with your own UI: it is rebuilt on every hot reload (`HotEntry.OnLoad`/`OnUnload`), so
-you can work on it without restarting AD. Keep state that must survive a reload outside the control, as BCL
-types (for example JSON in AppDomain data). The panel's shim classes and `PanelInfo` change only with a
-redeploy and a restart.
+button). AD first opens it floating; dock it where you like and AD remembers the place. The shim only hosts an
+empty control (`MyTools\Panel.cs` and the `PanelInfo` in `MyTools.ins`); the content is
+`MyTools.Impl\Ui\PanelContent.cs`, which lists the extension's commands and runs them on a double-click. Replace it
+with your own UI: it is rebuilt on every hot reload (`HotEntry.OnLoad`/`OnUnload`), so you can work on it without
+restarting AD. The generated README lists the rules (run commands through the shim, release subscriptions in
+`Detach`, keep state that must survive a reload outside the control). The panel's shim classes and `PanelInfo`
+change only with a redeploy and a restart.
 
 ## Optional: an OutJob output
 
