@@ -55,10 +55,20 @@ $readTimeout = $ReadTimeoutMs
 if ($verb -eq 'run' -and -not $PSBoundParameters.ContainsKey('ReadTimeoutMs')) { $readTimeout = -1 }
 if ($readTimeout -eq 0) { $readTimeout = -1 }
 
-# Discover instances: one pipe per extension per AD process. The search pattern matters on Windows
-# PowerShell 5.1: without it, .NET Framework throws if any pipe name has characters illegal in paths.
+# Discover instances: one pipe per extension per AD process. The search pattern helps on Windows
+# PowerShell 5.1, where .NET Framework throws for the whole listing if any pipe name has characters
+# illegal in paths; but some Windows versions (Server) don't filter the pipe namespace by pattern and
+# return nothing, so fall back to the full listing (and its filtering below).
+function Get-PipeNames {
+    $names = @()
+    try { $names = @([IO.Directory]::GetFiles('\\.\pipe\', '*.HotReload.*')) } catch { }
+    if ($names.Count -eq 0) {
+        try { $names = @([IO.Directory]::GetFiles('\\.\pipe\')) } catch { }
+    }
+    return $names
+}
 $instances = @(
-    [IO.Directory]::GetFiles('\\.\pipe\', '*.HotReload.*') | ForEach-Object {
+    Get-PipeNames | ForEach-Object {
         if ($_ -match '\\pipe\\(?<name>.+)\.HotReload\.(?<pid>\d+)$') {
             [pscustomobject]@{ Name = $Matches.name; Pid = [int]$Matches.pid; Pipe = $_.Substring(9) }
         }

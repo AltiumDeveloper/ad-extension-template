@@ -185,7 +185,10 @@ namespace Altium.Designer.HotReload
         {
             if (collect)
             {
-                for (var i = 0; i < 3; i++)
+                // An unloaded context goes away over several collections (its loader allocator is freed by a
+                // finalizer, which frees more): keep collecting while something is still pending, as the .NET docs
+                // on verifying unloadability recommend, rather than a fixed number of times.
+                for (var i = 0; i < 10 && (i < 2 || _retired.Any(r => r.Context.IsAlive)); i++)
                 {
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
