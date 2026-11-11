@@ -22,6 +22,7 @@ namespace Altium.Designer.HotReload
         private readonly Func<string, Action<string>, Task<int>> _handler;
         private readonly Action<string> _log;
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+        private volatile string _lastError;
 
         public DevPipeServer(string pipeName, Func<string, Action<string>, Task<int>> handler, Action<string> log)
         {
@@ -31,8 +32,13 @@ namespace Altium.Designer.HotReload
             Task.Run(AcceptLoop);
         }
 
+        /// <summary>Why the pipe cannot be created or accept connections right now, or null while it works.</summary>
+        public string LastError => _lastError;
+
         private async Task AcceptLoop()
         {
+            var failures = 0;
+            string lastLogged = null;
             while (!_cts.IsCancellationRequested)
             {
                 NamedPipeServerStream server = null;
@@ -40,6 +46,13 @@ namespace Altium.Designer.HotReload
                 {
                     server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
                         PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                    if (failures > 0)
+                    {
+                        _log($"Pipe {_pipeName} available again after {failures} failed attempt(s).");
+                        failures = 0;
+                        lastLogged = null;
+                        _lastError = null;
+                    }
                     await server.WaitForConnectionAsync(_cts.Token).ConfigureAwait(false);
                     var connected = server;
                     server = null;
@@ -51,8 +64,18 @@ namespace Altium.Designer.HotReload
                 }
                 catch (Exception ex)
                 {
-                    _log("Pipe accept failed: " + ex.Message);
-                    await Task.Delay(1000).ConfigureAwait(false);
+                    failures++;
+                    _lastError = $"Pipe unavailable, retrying ({failures} failed attempt(s)): {ex.Message}";
+                    // Log the first failure and each change of cause, not every retry.
+                    if (ex.Message != lastLogged)
+                    {
+                        _log("Pipe accept failed: " + ex.Message + " (retrying with backoff up to 30 s; identical failures are not logged again)");
+                        lastLogged = ex.Message;
+                    }
+                    // 1 s, 2 s, 4 s ... capped at 30 s.
+                    var delay = TimeSpan.FromSeconds(Math.Min(30, 1 << Math.Min(failures - 1, 5)));
+                    try { await Task.Delay(delay, _cts.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
                 }
                 finally
                 {
@@ -84,27 +107,27 @@ namespace Altium.Designer.HotReload
                     }
                 });
 
+                // The module may keep this delegate (env "Log") and call it after the request ended, from any
+                // thread. From then on it appends to the host log instead, and it never throws.
+                var request = new RequestOutput(queue, _log);
                 var exitCode = 1;
                 try
                 {
-                    var request = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(request))
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(line))
                     {
-                        _log("pipe> " + request);
-                        exitCode = await _handler(request.Trim(), text =>
-                        {
-                            foreach (var line in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n'))
-                                queue.TryAdd(line);
-                        }).ConfigureAwait(false);
+                        _log("pipe> " + line);
+                        exitCode = await _handler(line.Trim(), request.Emit).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)
                 {
-                    queue.TryAdd("ERROR: " + ex);
+                    request.Emit("ERROR: " + ex);
                 }
                 finally
                 {
                     queue.TryAdd(EndMarker + exitCode.ToString());
+                    request.Close();
                     queue.CompleteAdding();
                     await pump.ConfigureAwait(false);
                 }
@@ -112,5 +135,42 @@ namespace Altium.Designer.HotReload
         }
 
         public void Dispose() => _cts.Cancel();
+
+        /// <summary>The emit delegate of one request: streams to the client while the request runs, then logs.</summary>
+        private sealed class RequestOutput
+        {
+            private readonly BlockingCollection<string> _queue;
+            private readonly Action<string> _log;
+            private volatile bool _closed;
+
+            public RequestOutput(BlockingCollection<string> queue, Action<string> log)
+            {
+                _queue = queue;
+                _log = log;
+            }
+
+            public void Close() => _closed = true;
+
+            public void Emit(string text)
+            {
+                if (!_closed)
+                {
+                    try
+                    {
+                        var added = true;
+                        foreach (var line in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n'))
+                            added &= _queue.TryAdd(line);
+                        if (added)
+                            return;
+                    }
+                    catch (Exception ex) when (ex is ObjectDisposedException || ex is InvalidOperationException)
+                    {
+                        // the request completed meanwhile
+                    }
+                }
+                try { _log("(log after its pipe request ended) " + text); }
+                catch { /* never throw into the module */ }
+            }
+        }
     }
 }

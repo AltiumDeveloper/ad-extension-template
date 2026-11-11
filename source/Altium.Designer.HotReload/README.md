@@ -18,7 +18,8 @@ Altium Designer
 ```
 
 In Debug, the shim loads the implementation into a collectible `AssemblyLoadContext`, from bytes
-(the file is never locked), and loads it again whenever the build rewrites it. A current-user
+(the file is read into memory and closed at once, so AD never keeps it locked), and loads it again
+whenever the build rewrites it or one of its private dependencies. A current-user
 named pipe lets a script in a terminal reload, inspect and run commands inside AD.
 
 ## Quick start (5 minutes)
@@ -32,7 +33,7 @@ You need an AD 24+ extension with the shim and the implementation as two project
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Altium.Designer.HotReload" Version="1.0.0" PrivateAssets="all" />
+  <PackageReference Include="Altium.Designer.HotReload" Version="1.0.1" PrivateAssets="all" />
   <!-- HotModule="true": hot-reloaded in Debug, a normal reference in Release. -->
   <ProjectReference Include="..\MyExtension.Impl\MyExtension.Impl.csproj" HotModule="true" />
 </ItemGroup>
@@ -135,11 +136,17 @@ chooses (typically `Origin` and `Context`).
 |---|---|---|
 | `Origin` | `string` | `"UI"` (AD process), `"Pipe"` (terminal), `"Host"` (`OnLoad`) |
 | `Context` | `object` | the `IServerDocumentView` AD passed, or null |
-| `Log` | `Action<string>` | pipe: streams a line to the terminal. UI: appends to the log file. May be absent. |
+| `Log` | `Action<string>` | pipe: streams a line to the terminal; if kept and called after the request ended, it appends to the log file instead. UI: appends to the log file. Never throws, callable from any thread. May be absent. |
 | `Generation` | `int` | 1, 2, 3… per successful load |
 | `ContractVersion` | `int` | `HotReloadHost.ContractVersion` |
 
 `parameters` is passed through unchanged. AD style is `Key=Value|Key=Value`.
+
+Module code may pump messages (a modal dialog, `Application.DoEvents`) in any of these methods.
+While `Invoke`, `GetCommands`, `OnLoad` or `OnUnload` runs, a reload (file change, `reload`) is
+deferred and runs once the outermost call completes; the code is never swapped under a running
+call. A command re-entered while a generation is being swapped (from `OnLoad`/`OnUnload`) fails
+with a `HotReloadException` asking to try again.
 
 ## Debug vs Release
 
@@ -178,7 +185,14 @@ powershell -File tools/hotreload.ps1 -Name MyExtension -Pid 12345 status
 
 With one instance running, the script picks it. With several (extensions or AD processes), it
 lists them and exits with 2. Exit codes: 0 ok, 1 command failed, 2 usage or ambiguous instance,
-3 no instance reachable. The script is easy to call from build scripts and AI agents.
+3 no instance reachable (or no answer in time). The script is easy to call from build scripts and AI agents.
+
+The verb is checked locally first: an unknown verb, or `run` without a command, exits with 2
+without looking for AD; `help` (or no arguments) prints the verbs and exits with 0.
+`-TimeoutMs` (default 3000) limits connecting. `-ReadTimeoutMs` (default 30000) limits the wait
+for each line of the answer, because AD's UI thread may be busy (a modal dialog, a long command):
+on timeout the script exits with 3. It applies to every verb except `run`, which waits as long as
+the command takes unless you pass `-ReadTimeoutMs`. `0` means no limit.
 
 **Protocol:** one request per connection. The client writes one UTF-8 line,
 `<verb> [arguments]`. The server streams output lines, then a final line of `U+0004` followed by
@@ -187,6 +201,9 @@ the exit code. Verbs: `ping`, `status [-gc]`, `reload`, `list`, `run <command> [
 **Security:** the pipe is created with `PipeOptions.CurrentUserOnly`, so only processes of the
 same Windows user can connect. That user can run any command of your extension inside AD. It
 exists in Debug builds only. Never ship a Debug shim.
+
+If the pipe cannot be created, the host retries with a backoff (1 s doubling up to 30 s), logs
+each distinct failure once, and `status` (called from AD) shows it as `Pipe error`.
 
 ## Unload pitfalls
 
@@ -217,18 +234,42 @@ package deliberately leaves it alone. Release loads the module once, so it doesn
 | Symptom | Fix |
 |---|---|
 | The extension's menu and commands are missing after an AD restart | AD loads only extensions listed in `Extensions\ExtensionsRegistry.xml`. Register it there (the `ad-extension` template's `deploy.ps1` does), then restart AD. |
-| `No hot reload instance found` | AD starts extension servers on first use, so the pipe exists only after the extension's first command in an AD session: run any of its commands once. Otherwise AD isn't running a **Debug** shim: deploy the Debug build and restart AD once. |
+| `No hot reload instance found` | AD starts extension servers on first use, so the pipe exists only after the extension's first command in an AD session: run any of its commands once. Otherwise AD isn't running a **Debug** shim, or it isn't deployed yet: deploy the Debug build (the template's `tools\deploy.ps1`) and restart AD once. |
+| `No response from \\.\pipe\... within N ms` (exit 3) | AD's UI thread is busy: a modal dialog is open or a command is still running. Close the dialog and retry, or raise `-ReadTimeoutMs`. |
 | `Several instances are running` | Add `-Name` and/or `-Pid` as listed. |
 | `Implementation module not found. Build it first.` | Build the implementation (Debug). `status` shows the expected path. |
 | `Build … rejected: No public static class 'HotEntry'` | The class must be `public static` and named `HotEntry`; `Invoke` must match the contract exactly. |
 | A build doesn't seem to load | `status` shows the generation, hash and last error. The log (`%LOCALAPPDATA%\Altium.Designer.HotReload\<name>.log`) has every load, rejection and pipe request. |
 | `Pending: generation(s) …` after `status -gc` | See [Unload pitfalls](#unload-pitfalls). A few pending generations after many rebuilds is the WPF limitation. |
 | `mark exactly one ProjectReference with HotModule="true"` | Mark exactly one ProjectReference in the shim with `HotModule="true"`. |
-| A type from `Altium.*` is different between shim and module | Altium assemblies are always shared with AD. Don't copy them to the module output: reference them with `<Private>false</Private>`. |
+| A type from `Altium.*` is different between shim and module | Altium assemblies AD provides are always shared with AD. Don't copy them to the module output: reference them with `<Private>false</Private>`. |
+| A change in a referenced project or package doesn't load | Changes to `*.dll` / `*.deps.json` directly in the module folder reload; files only under subfolders don't: run `hotreload.ps1 reload`. A changed native DLL needs an AD restart (see [Dependencies](#dependencies)). |
 | The repo moved | `HotReloadBuild.ModulePath` is baked in at build time: rebuild and redeploy the Debug shim. |
 
-Other dependencies of the implementation (NuGet packages, other projects) are loaded privately
-from its output folder, also from bytes. They reload together with the module.
+## Dependencies
+
+Other dependencies of the implementation (NuGet packages, other projects) load privately into
+each generation:
+
+* They are located with the module's `.deps.json` (`AssemblyDependencyResolver`), so RID-specific
+  assets (`runtimes\<rid>\lib\...`), satellite assemblies and native DLLs (`runtimes\<rid>\native\...`)
+  are found. Without a `.deps.json` the module folder is probed (`<name>.dll`).
+* Managed assemblies are read into memory (from bytes) and never locked: the build can overwrite them.
+* **Native DLLs** cannot be loaded from memory: they load from their path, stay **locked**, and stay
+  loaded until AD exits (Windows never unloads them with the load context). Rebuilding a native
+  dependency needs an AD restart.
+* `Altium.*` assemblies that AD provides (already loaded, or found by AD's load context) are always
+  shared with AD so COM types unify. An `Altium.*` assembly that only exists next to the module
+  (your own library) loads privately like any other dependency.
+* The module reloads when the module DLL **or** a `*.dll` / `*.deps.json` directly in its folder
+  changes (name, size or write time), even if the module itself was not rewritten. Changes only
+  under subfolders (`runtimes\...`, satellite folders) are not detected: run `hotreload.ps1 reload`.
+
+The host reads each file with `FileShare.Read | FileShare.Delete`: while the build still has a
+file open for writing, the read waits and retries (up to about 2 s) instead of loading a
+half-written image. If it stays locked, the running generation keeps running and the reload
+happens when the writer closes the file (a first load or an explicit `reload` reports the error
+instead). The file is held open only while it is read.
 
 ## Building this package
 
@@ -239,7 +280,10 @@ dotnet pack -c Release
 
 The tests host the real `HotReloadHost` on an STA thread outside AD, with modules compiled on
 the fly. They check load, swap and collection of the old generation, rejection of a bad build,
-reload on file change, and a pipe round trip through `tools/hotreload.ps1`.
+reload on file change, a pipe round trip through `tools/hotreload.ps1`, and the 1.0.1 regressions
+(`RegressionTests.cs`): a kept pipe `Log`, reloads re-entered from a pumping `OnUnload`, a DLL still
+being written, private / `Altium.*` / RID-specific dependencies and dependency-only changes, pipe
+creation backoff, and the client's verb validation and read timeout.
 
 ## License
 

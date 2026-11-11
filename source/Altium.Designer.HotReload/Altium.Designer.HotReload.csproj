@@ -13,7 +13,7 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
 
     <PackageId>Altium.Designer.HotReload</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>Altium</Authors>
     <Company>Altium Limited</Company>
     <Copyright>Copyright (c) 2026 Altium Limited</Copyright>

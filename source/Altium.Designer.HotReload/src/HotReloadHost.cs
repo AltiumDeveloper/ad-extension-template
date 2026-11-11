@@ -47,13 +47,20 @@ namespace Altium.Designer.HotReload
         private Action _onUnload;
         private string _hash;
         private DateTime _writeTimeUtc;
+        // Private dependencies (name, size, write time) last seen on disk / of the loaded generation.
+        private string _seenDependencies;
+        private string _loadedDependencies;
         // Set while the build on disk is rejected (the previous generation keeps running).
         private string _rejection;
         private DateTime _loadedAt;
         private int _generation;
         private int _collected;
+        // > 0 while module code runs (Invoke, GetCommands, OnLoad, OnUnload) or a generation is being swapped.
+        // Module code may pump messages (modal dialog, DoEvents), which can re-enter the host on this thread.
         private int _depth;
         private bool _reloadPending;
+        private bool _forcePending;
+        private bool _disposed;
 
         /// <summary>
         /// Starts the host: watches <paramref name="modulePath"/> and opens the pipe
@@ -86,10 +93,13 @@ namespace Altium.Designer.HotReload
                     try { EnsureCurrent(); }
                     catch (Exception ex) { Log("Reload after file change failed: " + ex.Message); }
                 }));
-                _watcher = new FileSystemWatcher(directory, "*.dll")
+                _watcher = new FileSystemWatcher(directory)
                 {
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.CreationTime,
                 };
+                // The module and its private dependencies (see DependencyStamp).
+                _watcher.Filters.Add("*.dll");
+                _watcher.Filters.Add("*.deps.json");
                 FileSystemEventHandler changed = (_, __) => _debounce.Change(400, Timeout.Infinite);
                 _watcher.Changed += changed;
                 _watcher.Created += changed;
@@ -123,7 +133,10 @@ namespace Altium.Designer.HotReload
         public IReadOnlyList<string> GetCommands()
         {
             EnsureCurrent();
-            return _getCommands?.Invoke() ?? Array.Empty<string>();
+            var getCommands = _getCommands;
+            if (getCommands == null)
+                return Array.Empty<string>();
+            return Busy(() => getCommands() ?? Array.Empty<string>());
         }
 
         /// <summary>Loads the module again even if unchanged. A failing build throws and keeps the old generation.</summary>
@@ -145,14 +158,21 @@ namespace Altium.Designer.HotReload
                 sb.AppendLine($"Pending    : generation(s) {string.Join(", ", pending)} " + (collect
                     ? "survived a full GC: something still references them (see README, Unload pitfalls)"
                     : "(run 'status -gc' to force a collection)"));
+            if (_depth > 0 || _reloadPending)
+                sb.AppendLine($"Busy       : module code is running" + (_reloadPending ? "; a reload is deferred until it completes" : ""));
             sb.AppendLine($"Log        : {LogPath}");
             if (LastError != null)
                 sb.AppendLine($"Last error : {LastError}");
+            if (_pipe?.LastError != null)
+                sb.AppendLine($"Pipe error : {_pipe.LastError}");
             return sb.ToString();
         }
 
         public void Dispose()
         {
+            if (_disposed)
+                return;
+            _disposed = true;
             _pipe.Dispose();
             _watcher?.Dispose();
             _debounce?.Dispose();
@@ -189,16 +209,20 @@ namespace Altium.Designer.HotReload
         }
 
         /// <summary>
-        /// Loads the module if the file changed (or <paramref name="force"/>). Returns what happened,
-        /// or null when already current. A failing load throws and keeps the previous generation.
+        /// Loads the module if the file or one of its private dependencies changed (or <paramref name="force"/>).
+        /// Returns what happened, or null when already current. A failing load throws and keeps the previous generation.
         /// </summary>
         internal string EnsureCurrent(bool force = false)
         {
+            if (_disposed)
+                return null;
             if (_depth > 0)
             {
-                // Re-entered while a command runs (it pumps messages, e.g. a modal dialog): never swap code under it.
+                // Re-entered while module code runs or a generation is being swapped (it pumps messages,
+                // e.g. a modal dialog): never swap code under it. Runs once the outer operation completes.
                 _reloadPending = true;
-                return "Reload deferred until the running command completes.";
+                _forcePending |= force;
+                return "Reload deferred until the running module code completes.";
             }
 
             var file = new FileInfo(ModulePath);
@@ -208,25 +232,87 @@ namespace Altium.Designer.HotReload
                     return null;
                 throw new FileNotFoundException("Implementation module not found. Build it first.", ModulePath);
             }
-            if (!force && _invoke != null && file.LastWriteTimeUtc == _writeTimeUtc)
+            var dependencies = DependencyStamp();
+            if (!force && _invoke != null && file.LastWriteTimeUtc == _writeTimeUtc && dependencies == _seenDependencies)
                 return null;
 
-            var image = HotLoadContext.ReadAllBytes(ModulePath);
+            byte[] image;
+            try
+            {
+                image = HotLoadContext.ReadAllBytes(ModulePath);
+            }
+            catch (IOException ex) when (!force && _invoke != null && !(ex is FileNotFoundException))
+            {
+                // Still being written (the build holds it open). The watcher fires again when the writer closes it.
+                var busy = $"The build on disk is still being written ({ex.Message.Trim()}); still running generation {_generation}.";
+                Log(busy);
+                return busy;
+            }
             var hash = Convert.ToHexString(SHA256.HashData(image)).Substring(0, 12);
             _writeTimeUtc = file.LastWriteTimeUtc;
-            if (!force && _invoke != null && hash == _hash)
+            _seenDependencies = dependencies;
+            if (!force && _invoke != null && hash == _hash && dependencies == _loadedDependencies)
             {
                 _rejection = null; // back to the build that is running
                 return null;
             }
 
-            return LoadGeneration(image, hash);
+            var reason = !force && _invoke != null && hash == _hash ? " (dependencies changed)" : "";
+            return Busy(() => LoadGeneration(image, hash, dependencies)) + reason;
         }
 
-        private string LoadGeneration(byte[] image, string hash)
+        /// <summary>Name, size and write time of the private dependencies next to the module (<c>*.dll</c>, <c>*.deps.json</c>).</summary>
+        private string DependencyStamp()
+        {
+            try
+            {
+                var directory = new DirectoryInfo(Path.GetDirectoryName(ModulePath));
+                return string.Join("|", directory.EnumerateFiles("*.dll").Concat(directory.EnumerateFiles("*.deps.json"))
+                    .Where(f => !string.Equals(f.FullName, ModulePath, StringComparison.OrdinalIgnoreCase))
+                    .Select(f => $"{f.Name.ToLowerInvariant()}:{f.Length}:{f.LastWriteTimeUtc.Ticks}")
+                    .OrderBy(s => s, StringComparer.Ordinal));
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                return _seenDependencies; // can't tell: assume unchanged
+            }
+        }
+
+        /// <summary>
+        /// Runs <paramref name="body"/> as module code: a reload requested meanwhile (re-entrantly, through a
+        /// message pump in the module) is deferred and runs once the outermost such operation completes.
+        /// </summary>
+        private T Busy<T>(Func<T> body)
+        {
+            _depth++;
+            try
+            {
+                return body();
+            }
+            finally
+            {
+                if (--_depth == 0 && _reloadPending && !_disposed)
+                {
+                    var force = _forcePending;
+                    _reloadPending = false;
+                    _forcePending = false;
+                    try
+                    {
+                        var result = EnsureCurrent(force);
+                        if (result != null)
+                            Log("Deferred reload: " + result);
+                    }
+                    catch (Exception ex) { Log("Deferred reload failed: " + ex.Message); }
+                }
+            }
+        }
+
+        private string LoadGeneration(byte[] image, string hash, string dependencies)
         {
             var next = _generation + 1;
-            var context = new HotLoadContext($"{Name}.Hot#{next}", Path.GetDirectoryName(ModulePath), _hostContext);
+            var context = new HotLoadContext($"{Name}.Hot#{next}", ModulePath, _hostContext);
+            if (context.ResolverError != null && next == 1)
+                Log("No .deps.json resolution, probing the module folder only: " + context.ResolverError);
             Func<string, string, IDictionary<string, object>, string> invoke;
             Func<string[]> getCommands;
             Action<IDictionary<string, object>> onLoad;
@@ -258,6 +344,7 @@ namespace Altium.Designer.HotReload
             _onUnload = onUnload;
             _generation = next;
             _hash = hash;
+            _loadedDependencies = dependencies;
             _loadedAt = DateTime.Now;
             LastError = null;
             _rejection = null;
@@ -279,25 +366,20 @@ namespace Altium.Designer.HotReload
         private string Invoke(string command, string parameters, string origin, object context, Action<string> log)
         {
             EnsureCurrent();
-            _depth++;
-            try
+            var invoke = _invoke ?? throw new HotReloadException(
+                $"{Name} is loading or unloading a generation (its OnLoad/OnUnload is still running): try again when it completes.", null);
+            return Busy(() =>
             {
-                return _invoke(command, parameters ?? string.Empty, CreateEnv(origin, context, log));
-            }
-            catch (Exception ex)
-            {
-                Log($"Command '{command}' failed: {ex}");
-                throw;
-            }
-            finally
-            {
-                if (--_depth == 0 && _reloadPending)
+                try
                 {
-                    _reloadPending = false;
-                    try { EnsureCurrent(); }
-                    catch (Exception ex) { Log("Deferred reload failed: " + ex.Message); }
+                    return invoke(command, parameters ?? string.Empty, CreateEnv(origin, context, log));
                 }
-            }
+                catch (Exception ex)
+                {
+                    Log($"Command '{command}' failed: {ex}");
+                    throw;
+                }
+            });
         }
 
         private int UnloadCurrent()
@@ -305,12 +387,16 @@ namespace Altium.Designer.HotReload
             if (_context == null)
                 return 0;
 
-            try { _onUnload?.Invoke(); }
-            catch (Exception ex) { Log($"OnUnload of generation {_generation} failed: {Describe(ex)}"); }
-
+            // Detach first: module code re-entered from OnUnload (a message pump) must not call into this generation.
+            var onUnload = _onUnload;
             _invoke = null;
             _getCommands = null;
             _onUnload = null;
+            _depth++;
+            try { onUnload?.Invoke(); }
+            catch (Exception ex) { Log($"OnUnload of generation {_generation} failed: {Describe(ex)}"); }
+            finally { _depth--; }
+
             FrameworkCaches.Clear(Log);
             _context.Unload();
             _retired.Add((_generation, new WeakReference(_context)));
