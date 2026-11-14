@@ -173,7 +173,11 @@ IDs must be unique. To add the item to one of AD's own menus instead, use an `In
 thing that needs a restart.
 
 Rules for hot code: don't cache Altium objects across commands (query the workspace each time). Undo
-static event subscriptions, timers, threads and open forms in `HotEntry.OnUnload`.
+static event subscriptions, timers, threads and open forms in `HotEntry.OnUnload`. Inside AD a relative path
+resolves against AD's installation folder, and in Debug `Assembly.Location` of the implementation is empty: use
+explicit paths. Notification handlers, menu items with their own enabled/visible state, and native callbacks
+belong in the shim, through the hooks of `PluginServerModule` (`RegisterCommands`, `OnCreated`); the generated
+README shows each.
 
 ## Optional: a panel
 

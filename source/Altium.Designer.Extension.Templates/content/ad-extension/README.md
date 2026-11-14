@@ -125,6 +125,87 @@ Rules for hot code (Debug): don't cache Altium COM objects across commands, and 
 subscriptions, timers, threads and open forms in `HotEntry.OnUnload`, otherwise the old generation
 stays in memory (`tools/ad.ps1 status -gc` shows it). One or a few pending generations are expected:
 AD's WPF keeps the first load of new builds until AD restarts (see the package README).
+
+Two more traps, both of which work in Release and fail only under hot reload or only inside AD:
+
+* AD's working directory is its installation folder, so a relative path in your code resolves under
+  `C:\Program Files\Altium\...` and writing to it fails with `UnauthorizedAccessException`. Build output paths from
+  an explicit base (a parameter, the project's folder, `Path.GetTempPath()`).
+* In Debug the implementation is loaded from bytes, so `Assembly.Location` of `MyExtension.Impl` is empty. Don't
+  look for data files "next to the DLL": embed them as resources (`EmbeddedResource`, read with
+  `GetManifestResourceStream`), or take their path from a parameter.
+
+## Code in the shim
+
+Some things must live in the shim (`MyExtension\`), which is never unloaded: whatever AD or native code calls back
+into on its own. Add them as another part of `partial class PluginServerModule` (a new file in `MyExtension\`), and
+keep them small: like menus, they change only with a redeploy and an AD restart. `PluginServerModule` has three
+hooks, each compiled away when nothing implements it:
+
+| Hook | Called | Use it for |
+|---|---|---|
+| `RegisterCommands(CommandLauncher)` | at the end of `InitializeCommands`, after `Run` | processes of your own |
+| `RegisterViews(IClient)` | in the constructor | panels (taken by `Panel.cs` with `--panel`) |
+| `OnCreated(IClient)` | in the constructor, after `RegisterViews` | any other one-time setup, such as a notification handler |
+
+**A menu item with its own state.** `Run` is always enabled and visible. For an item that should be disabled or
+hidden in some contexts (a context-menu item shown only over the right object, say), register a process with its
+own GetState procedure, declare it in `Installation\MyExtension.ins` (`Command Name = 'RunOnPart' ... End`) and point
+the `PL` at it (`Command='MyExtension:RunOnPart'`, `Params='Cmd=<HotCommand>'`):
+
+```csharp
+public partial class PluginServerModule
+{
+    partial void RegisterCommands(CommandLauncher launcher) =>
+        launcher.RegisterCommand("RunOnPart", Commands.Run, GetState_RunOnPart);
+
+    // AD calls it whenever it builds a menu holding the item: keep it fast, and let nothing escape.
+    private static void GetState_RunOnPart(IServerDocumentView view, ref string parameters, ref bool enabled,
+        ref bool isChecked, ref bool visible, ref string caption, ref string imageFile)
+    {
+        try { enabled = visible = /* your test */ true; }
+        catch (Exception) { enabled = visible = false; }
+    }
+}
+```
+
+**Notifications.** `ServerModule.ReceiveNotification` isn't virtual, so you can't override it. Create the SDK's
+own handler class with a callback, keep it in a field, and forward to the implementation:
+
+```csharp
+public partial class PluginServerModule
+{
+    private NotificationHandler _notifications;
+
+    partial void OnCreated(IClient client)
+    {
+        _notifications = new NotificationHandler(OnNotification); // the constructor registers it with AD
+    }
+
+    private static void OnNotification(INotification notification)
+    {
+        try
+        {
+            if (string.Equals(notification?.GetNotificationType(), NotificationType.DocumentNotification,
+                    StringComparison.OrdinalIgnoreCase))
+                Commands.Invoke("OnDocumentNotification", "Code=" + notification.GetNotificationCode(), notification);
+        }
+        catch (Exception) { /* never let an exception reach AD's notification loop */ }
+    }
+}
+```
+
+Use a `DXP.NotificationHandler` with a callback, as above, rather than a handler class of your own. Its constructor
+registers it: do not call `RegisterNotificationHandler` again, or every notification arrives twice. Keep it in a field
+while it should receive notifications; `IClient.UnregisterNotificationHandler` stops it. The callback receives every
+notification of the whole of AD, so filter first: the kinds are the `DXP.NotificationType` constants, and each kind's
+codes are in the class nested in `DXP.NotificationCode` (`DocumentNotificationCode` for documents).
+
+**Timers and native callbacks.** A `System.Windows.Forms.Timer` created in the shim ticks on AD's UI thread and may
+call the implementation through `Commands.Invoke`. A callback handed to native code (a Win32 hook, a callback into a
+native DLL) belongs in the shim too, in a field for as long as native code holds it: a delegate of the implementation
+points into code that a hot reload unloads, and a call into it can take AD down with no exception to catch. If one must live in the
+implementation, remove it in `HotEntry.OnUnload`.
 <!--#if (Outputer) -->
 
 ## OutJob outputer
