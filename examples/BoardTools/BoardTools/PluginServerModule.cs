@@ -40,10 +40,10 @@ namespace CSharpPlugin
         partial void RegisterViews(IClient client);
 
         /// <summary>
-        /// Your own one-time setup in the shim, after <see cref="RegisterViews"/>: for example registering a
-        /// notification handler (<c>client.RegisterNotificationHandler(new NotificationHandler(...))</c>, kept in a
-        /// field). Code here is never unloaded, so it outlives hot reloads. Implement it in another part of this
-        /// class; without one, the call is compiled away.
+        /// Your own one-time setup in the shim, after <see cref="RegisterViews"/>: for example a notification
+        /// handler (<c>new NotificationHandler(...)</c>, kept in a field; its constructor registers it, so don't call
+        /// <c>RegisterNotificationHandler</c> as well). Code here is never unloaded, so it outlives hot reloads. Implement it
+        /// in another part of this class; without one, the call is compiled away.
         /// </summary>
         partial void OnCreated(IClient client);
 
