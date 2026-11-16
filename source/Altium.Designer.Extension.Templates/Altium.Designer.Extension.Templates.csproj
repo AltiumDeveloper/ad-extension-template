@@ -3,7 +3,7 @@
   <PropertyGroup>
     <PackageType>Template</PackageType>
     <PackageId>Altium.Designer.Extension.Templates</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Title>Altium Designer extension templates</Title>
     <Authors>Altium</Authors>
     <Company>Altium Limited</Company>

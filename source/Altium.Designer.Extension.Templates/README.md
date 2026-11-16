@@ -79,5 +79,5 @@ To try a local change:
 
 ```bash
 dotnet pack -c Release -o bin
-dotnet new install bin/Altium.Designer.Extension.Templates.1.0.1.nupkg --force
+dotnet new install bin/Altium.Designer.Extension.Templates.1.1.0.nupkg --force
 ```
